@@ -1,21 +1,15 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"time"
-
 	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
+	"github.com/justinbather/remote-compiler-api/internal/db"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"log"
+	"net/http"
 )
 
 type CompileJob struct {
@@ -41,34 +35,7 @@ func updateCompileJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	err := godotenv.Load(".env")
-	if err != nil {
-		fmt.Println("Error loading env vars")
-		log.Fatal(err)
-	}
-
-	MONGO_URI := os.Getenv("MONGO_URI")
-	fmt.Println(MONGO_URI)
-
-	client, err := mongo.NewClient(options.Client().ApplyURI(MONGO_URI))
-	if err != nil {
-		fmt.Println("Error creating mongo client")
-		log.Fatal(err)
-	}
-
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	err = client.Connect(ctx)
-	if err != nil {
-		fmt.Println("Error connecting to mongo client")
-		log.Fatal(err)
-	}
-
-	err = client.Ping(ctx, readpref.Primary())
-	if err != nil {
-		fmt.Println("Error pinging atlas cluster")
-		log.Fatal(err)
-	}
+	client := internal.Connect()
 
 	coll := client.Database("test").Collection("problems")
 
