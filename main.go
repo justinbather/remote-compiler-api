@@ -1,108 +1,99 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"strconv"
+	"os"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 type CompileJob struct {
-	ID     int    `json:"id"`
-	Code   string `json:"code"`
-	Status string `json:"status"`
-}
-
-var CompileJobs = []CompileJob{
-	{ID: 1, Code: "test", Status: "pending"},
-	{ID: 2, Code: "testing", Status: "complete"},
+	ID         primitive.ObjectID `bson:"_id"`
+	Title      string             `bson:"title"`
+	Category   string             `bson:"category"`
+	Difficulty string             `bson:"difficulty"`
 }
 
 func getAllCompileJobs(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Returning all jobs")
-	json.NewEncoder(w).Encode(CompileJobs)
 }
 
 func getOneCompileJob(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	idParam, err := strconv.Atoi(params["jobId"])
-	if err != nil {
-		w.WriteHeader(400)
-	}
-
-	for _, job := range CompileJobs {
-		if job.ID == idParam {
-			json.NewEncoder(w).Encode(job)
-		}
-	}
-	w.WriteHeader(400)
 }
 
 func createCompileJob(w http.ResponseWriter, r *http.Request) {
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		w.WriteHeader(500)
-	}
-
-	var newJob CompileJob
-	json.Unmarshal(data, &newJob)
-
-	CompileJobs = append(CompileJobs, newJob)
-	json.NewEncoder(w).Encode(newJob)
 }
 
 func deleteCompileJob(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	idParam, err := strconv.Atoi(params["jobId"])
-	if err != nil {
-		w.WriteHeader(400)
-		return
-	}
-
-	for i, job := range CompileJobs {
-		if job.ID == idParam {
-			CompileJobs = append(CompileJobs[:i], CompileJobs[i+1:]...)
-			w.WriteHeader(204)
-			return
-		}
-	}
-
-	w.WriteHeader(400)
 }
 
 func updateCompileJob(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	idParam, err := strconv.Atoi(params["jobId"])
-	if err != nil {
-		w.WriteHeader(400)
-		return
-	}
-
-	data, err := io.ReadAll((r.Body))
-	if err != nil {
-		w.WriteHeader(500)
-		return
-	}
-
-	var update CompileJob
-	json.Unmarshal(data, &update)
-
-	for i, job := range CompileJobs {
-		if job.ID == idParam {
-			CompileJobs = append(CompileJobs[:i], CompileJobs[i+1:]...)
-			CompileJobs = append(CompileJobs, update)
-			w.WriteHeader(200)
-			json.NewEncoder(w).Encode(update)
-			return
-		}
-	}
 }
 
 func main() {
+
+	err := godotenv.Load(".env")
+	if err != nil {
+		fmt.Println("Error loading env vars")
+		log.Fatal(err)
+	}
+
+	MONGO_URI := os.Getenv("MONGO_URI")
+	fmt.Println(MONGO_URI)
+
+	client, err := mongo.NewClient(options.Client().ApplyURI(MONGO_URI))
+	if err != nil {
+		fmt.Println("Error creating mongo client")
+		log.Fatal(err)
+	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	err = client.Connect(ctx)
+	if err != nil {
+		fmt.Println("Error connecting to mongo client")
+		log.Fatal(err)
+	}
+
+	err = client.Ping(ctx, readpref.Primary())
+	if err != nil {
+		fmt.Println("Error pinging atlas cluster")
+		log.Fatal(err)
+	}
+
+	coll := client.Database("test").Collection("problems")
+
+	var result CompileJob
+	filter := bson.D{{"title", "Two Sum"}}
+	err = coll.FindOne(ctx, filter).Decode(&result)
+	if err == mongo.ErrNoDocuments {
+
+		fmt.Println("no documents found")
+	}
+	if err != nil {
+		panic(err)
+	}
+	jsonData, err := json.MarshalIndent(result, "", "   ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s\n", jsonData)
+
+	dbList, err := client.ListDatabaseNames(ctx, bson.M{})
+	if err != nil {
+		fmt.Println("Error fetching list of database names")
+		log.Fatal(err)
+	}
+	fmt.Println(dbList)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/jobs", getAllCompileJobs).Methods("GET")
@@ -116,4 +107,5 @@ func main() {
 		log.Fatal("error starting server", err)
 	}
 
+	defer client.Disconnect(ctx)
 }
